@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useRef, useState } from 'react';
 import { GameEngine } from './services/engine';
 import { LevelUpModal } from './components/LevelUpModal';
@@ -19,7 +18,7 @@ import { ShoppingBag, Swords, Image as ImageIcon } from 'lucide-react';
 import { GameSetupModal } from './components/GameSetupModal';
 
 export default function App() {
-  const { phase, setPhase, initGame, stats, startNextWave, applyDraft, setInspectedEntity, buyBrotatoItem, endWaveAndGoToShop, showPermanentLevelUp, toggleRenderMode, renderMode, activeWaveData } = useGameStore();
+  const { phase, setPhase, initGame, stats, startNextWave, applyDraft, setInspectedEntity, buyBrotatoItem, endWaveAndGoToShop, showPermanentLevelUp, toggleRenderMode, renderMode, activeWaveData, isPaused, togglePause } = useGameStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const waveStartedRef = useRef(0);
@@ -34,16 +33,40 @@ export default function App() {
     assetLoader.preloadCoreAssets(); // Start loading images
     Log.displayLogsUI();
     Log.log('App', 'Component mounted, audio loaded, log UI initialized.');
+  }, []);
 
-    // Dev Shortcut for Render Mode
+  // 统一处理键盘事件
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        // 切换渲染模式 (M)
         if (e.key.toLowerCase() === 'm') {
             toggleRenderMode();
+        }
+        // 暂停/继续游戏 (空格键)
+        if (e.code === 'Space' && (phase === GamePhase.COMBAT || phase === GamePhase.SHOP)) {
+            e.preventDefault(); // 防止页面滚动
+            if (phase === GamePhase.COMBAT) { // Only allow pausing in combat
+                togglePause();
+            }
         }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [phase, toggleRenderMode, togglePause]);
+
+  // Handle Music based on pause and phase
+  useEffect(() => {
+    if (phase === GamePhase.COMBAT) {
+        if (isPaused || showLevelUp) {
+            audioManager.stopMusic();
+        } else {
+            audioManager.play('music', { loop: true, volume: 0.2 });
+        }
+    } else {
+        audioManager.stopMusic();
+    }
+  }, [isPaused, phase, showLevelUp]);
+
 
   useEffect(() => {
     if (canvasRef.current && !engineRef.current) {
@@ -83,10 +106,9 @@ export default function App() {
               }));
 
               if (didLevelUp) {
-                  engineRef.current?.stop();
                   audioManager.play('level_up');
                   setShowLevelUp(true);
-                  Log.log('AppCallback', 'Level up detected. Pausing engine and showing level up modal.');
+                  Log.log('AppCallback', 'Level up detected. Showing level up modal.');
               }
           },
           onWaveEnd: () => {
@@ -121,28 +143,23 @@ export default function App() {
         setTimeLeft(config.duration);
         Log.log('PhaseLogic', `Entered SHOP. Pre-set timer for next wave (${nextWaveNumber}) to ${config.duration}s.`);
     }
-  }, [phase, activeWaveData]);
-
+  }, [phase, activeWaveData, stats.wave]);
+  
+  // This effect ensures the engine is running or stopped based on the overall game state, not just pause.
   useEffect(() => {
-    if (phase === GamePhase.COMBAT && !showLevelUp) {
-        audioManager.play('music', { loop: true, volume: 0.2 });
-        // If wave has already started, we are resuming from pause.
-        if (waveStartedRef.current === stats.wave) {
-             Log.log('EngineControl', `Resuming combat phase. Starting engine.`);
-             engineRef.current?.start();
-        } else {
-             Log.log('EngineControl', `New wave detected. Deferring engine start to WaveSync.`);
-        }
-    } else if (phase === GamePhase.SHOP && !showLevelUp && !showPermanentLevelUp) {
-        Log.log('EngineControl', `Phase is SHOP. Ensuring engine is RUNNING for UI.`);
+    const shouldEngineRun = (
+        phase === GamePhase.COMBAT || 
+        phase === GamePhase.SHOP
+    );
+
+    if (shouldEngineRun && !engineRef.current?.isRunning) {
+        Log.log('EngineControl', `Engine should be running for phase ${phase}. Starting.`);
         engineRef.current?.start();
-        audioManager.stopMusic();
-    } else {
-        Log.log('EngineControl', `Phase is ${phase} or level up is shown. Ensuring engine is STOPPED.`);
-        audioManager.stopMusic();
+    } else if (!shouldEngineRun && engineRef.current?.isRunning) {
+        Log.log('EngineControl', `Engine should be stopped for phase ${phase}. Stopping.`);
         engineRef.current?.stop();
     }
-  }, [phase, showLevelUp, showPermanentLevelUp, stats.wave]);
+  }, [phase, showLevelUp, showPermanentLevelUp]);
   
   useEffect(() => {
     Log.log('WaveSync', `Checking if wave should start. Phase: ${phase}, ShowLevelUp: ${showLevelUp}, WaveRef: ${waveStartedRef.current}, StoreWave: ${stats.wave}`);
@@ -165,9 +182,7 @@ export default function App() {
     
     initGame(config);
     
-    // We get the activeWaveData from store immediately after init, but to be safe use the one from config if store update lags slightly in this closure (though Zustand is synchronous usually)
-    // Actually safe to wait for effect or just set timer here based on default
-    const wave1Config = WAVE_DATA[0]; // Fallback, real sync happens in SHOP phase effect
+    const wave1Config = WAVE_DATA[0]; 
     setTimeLeft(wave1Config.duration);
     
     setShowLevelUp(false);
@@ -176,7 +191,7 @@ export default function App() {
 
   const handleRestart = () => {
     Log.log('App', 'Restart button clicked.');
-    setPhase(GamePhase.SETUP); // Go back to setup instead of instant restart
+    setPhase(GamePhase.SETUP); 
   };
 
   const handleDraftSelect = (option: DraftOption) => {

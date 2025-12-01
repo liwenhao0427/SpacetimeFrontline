@@ -17,7 +17,7 @@ interface ShopProps {
 }
 
 export const Shop: React.FC<ShopProps> = ({ isVisible, onVisibilityChange }) => {
-  const { stats, ownedItems, buyBrotatoItem, buyExperience, buyUnit, activeItemPool, activeUnitPool } = useGameStore();
+  const { stats, ownedItems, buyBrotatoItem, buyExperience, buyUnit, activeItemPool, activeUnitPool, openSupermarket, closeSupermarket } = useGameStore();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [rerollCount, setRerollCount] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -35,6 +35,15 @@ export const Shop: React.FC<ShopProps> = ({ isVisible, onVisibilityChange }) => 
     return getShopProbabilities(stats.wave, stats.luck);
   }, [stats.wave, stats.luck]);
 
+  const handleOpenSupermarket = () => {
+    setShowSupermarket(true);
+    openSupermarket();
+  };
+
+  const handleCloseSupermarket = () => {
+    setShowSupermarket(false);
+    closeSupermarket();
+  };
 
   const generateShop = (keepLocked = true) => {
     const lockedItems = keepLocked ? items.filter(i => i.locked && !i.bought) : [];
@@ -164,7 +173,7 @@ export const Shop: React.FC<ShopProps> = ({ isVisible, onVisibilityChange }) => 
         {/* Integrated Inventory Panel - Now sits on top of this layer */}
         <InventoryPanel />
         
-        {showSupermarket && <Supermarket onClose={() => setShowSupermarket(false)} />}
+        {showSupermarket && <Supermarket onClose={handleCloseSupermarket} />}
         
         <div className="flex justify-between items-start mb-4 shrink-0">
             <div className="flex flex-col gap-2">
@@ -224,7 +233,7 @@ export const Shop: React.FC<ShopProps> = ({ isVisible, onVisibilityChange }) => 
             <div className="flex items-center gap-4">
                  {/* Supermarket Cheat Entrance */}
                  <button 
-                    onClick={() => setShowSupermarket(true)}
+                    onClick={handleOpenSupermarket}
                     className="p-3 bg-purple-500 hover:bg-purple-600 text-white rounded-2xl shadow-lg shadow-purple-200 transition-transform hover:scale-110 active:scale-95 group"
                     title="Open Supermarket (Cheat)"
                  >

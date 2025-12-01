@@ -1,5 +1,4 @@
 
-
 export type WeaponClass = 'MELEE' | 'RANGED' | 'MAGIC';
 
 export type Rarity = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
@@ -157,6 +156,9 @@ export interface PlayerStats {
   rangedDmgGrowth?: number;
   elementalDmgGrowth?: number;
   hpGrowth?: number;
+
+  // Global enemy modifiers
+  enemyHealthMultiplier?: number;
   
   // Index signature for dynamic item effects
   [key: string]: number | undefined | any;

@@ -28,6 +28,7 @@ interface GameStore {
   ammoState: AmmoBayState;
   inspectedEntity: InspectableEntity;
   renderMode: RenderMode;
+  isPaused: boolean;
   
   // Game Configuration
   gameConfig: GameConfig;
@@ -47,9 +48,13 @@ interface GameStore {
   
   // UI State
   showPermanentLevelUp: boolean;
+  
+  // Supermarket state management
+  wasPausedBeforeSupermarket: boolean;
 
   // Actions
   setPhase: (phase: GamePhase) => void;
+  togglePause: () => void;
   toggleRenderMode: () => void;
   initGame: (config?: GameConfig) => void;
   moveUnit: (unitId: string, targetRow: number, targetCol: number) => void;
@@ -62,6 +67,8 @@ interface GameStore {
   triggerManualExplosion: (unitId: string) => void;
   buyExperience: (amount: number, cost: number) => void;
   sellUnit: (unitId: string) => { refund: number, x: number, y: number } | null;
+  openSupermarket: () => void;
+  closeSupermarket: () => void;
 
   // Engine Sync Actions
   damageUnit: (unitId: string, amount: number) => void;
@@ -151,6 +158,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   permanentHeroUpgradeStatus: { ...initialUpgradeStatus },
   showPermanentLevelUp: false,
   renderMode: 'EMOJI',
+  isPaused: false,
+  wasPausedBeforeSupermarket: false,
   gameConfig: { selectedHeroId: 'hero_keyboard', selectedUnitPools: [], selectedItemPools: [], selectedWaveConfigId: 'STANDARD_CAMPAIGN' },
   activeUnitPool: [],
   activeItemPool: [],
@@ -158,12 +167,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setPhase: (phase) => set({ phase }),
   
+  togglePause: () => set(state => ({ isPaused: !state.isPaused })),
+
   toggleRenderMode: () => set(state => {
       const newMode = state.renderMode === 'EMOJI' ? 'SPRITE' : 'EMOJI';
       Log.event('系统', `切换渲染模式为: ${newMode}`);
       return { renderMode: newMode };
   }),
   
+  openSupermarket: () => {
+    set(state => {
+        Log.log('Store', `Entering supermarket. Storing pause state: ${state.isPaused}`);
+        return {
+            wasPausedBeforeSupermarket: state.isPaused,
+            isPaused: true, // Always pause when opening
+        };
+    });
+  },
+  closeSupermarket: () => {
+      set(state => {
+          Log.log('Store', `Closing supermarket. Restoring pause state to: ${state.wasPausedBeforeSupermarket}`);
+          return ({ isPaused: state.wasPausedBeforeSupermarket });
+      });
+  },
+
   setInspectedEntity: (entity) => set({ inspectedEntity: entity }),
   
   addGold: (amount) => set(state => ({ stats: { ...state.stats, gold: state.stats.gold + amount }})),
@@ -221,6 +248,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       heroUpgradeStatus: { ...initialUpgradeStatus },
       permanentHeroUpgradeStatus: { ...initialUpgradeStatus },
       showPermanentLevelUp: false,
+      isPaused: false,
     });
   },
 
@@ -535,6 +563,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         gridUnits: nextUnits,
         stats: baseStats,
         phase: GamePhase.SHOP,
+        isPaused: false, // Ensure not paused when entering shop
       };
     });
   },
@@ -592,6 +621,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         stats: nextStats,
         phase: GamePhase.COMBAT,
         heroUpgradeStatus: startingStatus,
+        isPaused: false, // Ensure not paused
       };
     });
   },

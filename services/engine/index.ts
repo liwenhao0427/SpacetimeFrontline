@@ -1,3 +1,4 @@
+
 import { GamePhase, InspectableEntity } from '../../types';
 import { useGameStore } from '../../store/useGameStore';
 import { GameState } from './GameState';
@@ -146,32 +147,40 @@ export class GameEngine {
   private update(dt: number, timestamp: number) {
     const store = useGameStore.getState();
     
+    // Systems that ALWAYS run for UI responsiveness (drag & drop, inspection).
     this.renderingSystem.update(dt);
     this.inspectionSystem.update(dt, this.gameState, this.callbacks);
-    
-    // Always update floating text, even in shop
-    this.floatingTextSystem.update(dt, this.gameState, this.callbacks);
 
-    if (store.phase !== GamePhase.COMBAT) return;
+    const isGameLogicActive = store.phase === GamePhase.COMBAT && !store.isPaused;
 
-    this.gameState.waveTime -= dt;
+    if (isGameLogicActive) {
+      // All combat-related logic updates
+      this.gameState.waveTime -= dt;
 
-    if (this.gameState.waveTime <= 0) {
-      this.gameState.waveTime = 0;
-      this.gameState.enemies = [];
-      this.gameState.projectiles = [];
-      this.gameState.floatingTexts = [];
-      this.callbacks.onWaveEnd?.();
-      return; 
-    }
-    
-    this.enemySystem.update(dt, this.gameState, this.callbacks);
-    this.unitSystem.update(dt, this.gameState, this.callbacks, this.projectileSystem);
-    this.projectileSystem.update(dt, this.gameState, this.callbacks);
+      if (this.gameState.waveTime <= 0) {
+        this.gameState.waveTime = 0;
+        this.gameState.enemies = [];
+        this.gameState.projectiles = [];
+        this.gameState.floatingTexts = [];
+        this.callbacks.onWaveEnd?.();
+        return; 
+      }
+      
+      this.enemySystem.update(dt, this.gameState, this.callbacks);
+      this.unitSystem.update(dt, this.gameState, this.callbacks, this.projectileSystem);
+      this.projectileSystem.update(dt, this.gameState, this.callbacks);
+      this.floatingTextSystem.update(dt, this.gameState, this.callbacks);
 
-    if (timestamp - this.lastTimerUpdate > 1000) {
-      this.callbacks.onTimeUpdate?.(Math.ceil(Math.max(0, this.gameState.waveTime)));
-      this.lastTimerUpdate = timestamp;
+      if (timestamp - this.lastTimerUpdate > 1000) {
+        this.callbacks.onTimeUpdate?.(Math.ceil(Math.max(0, this.gameState.waveTime)));
+        this.lastTimerUpdate = timestamp;
+      }
+    } else {
+      // Logic for non-combat or paused states.
+      // E.g., floating text for selling units in SHOP should still update.
+      if (store.phase === GamePhase.SHOP) {
+        this.floatingTextSystem.update(dt, this.gameState, this.callbacks);
+      }
     }
   }
 

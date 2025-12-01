@@ -1,10 +1,9 @@
 
-
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { PlayerStats, GamePhase } from '../types';
-import { Zap, Shield, Swords, Crosshair, Wind, Clover, Menu, Magnet, GraduationCap, Coins, Percent, Heart, Hammer, Leaf, Sparkles, Wand } from 'lucide-react';
+import { Zap, Shield, Swords, Crosshair, Wind, Clover, Menu, Magnet, GraduationCap, Coins, Percent, Heart, Hammer, Leaf, Sparkles, Wand, Pause, Play, ShoppingCart } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
+import { Supermarket } from './Supermarket';
 
 interface HUDProps {
   stats: PlayerStats;
@@ -53,19 +52,43 @@ const StatRow: React.FC<{ statKey: string; value: number }> = ({ statKey, value 
 export const HUD: React.FC<HUDProps> = ({ stats, waveTime, currentWave }) => {
   const xpPct = (stats.xp / stats.maxXp) * 100;
   const [isExpanded, setIsExpanded] = useState(false);
-  const { phase } = useGameStore();
+  const [showSupermarket, setShowSupermarket] = useState(false);
+  const { phase, togglePause, isPaused, openSupermarket, closeSupermarket } = useGameStore();
+
+  const handleOpenSupermarket = () => {
+    setShowSupermarket(true);
+    openSupermarket();
+  };
+
+  const handleCloseSupermarket = () => {
+    setShowSupermarket(false);
+    closeSupermarket();
+  };
 
   const displayedStats = Object.keys(STAT_DISPLAY_CONFIG).filter(key => stats[key] && stats[key] !== 0);
 
   const isShopPhase = phase === GamePhase.SHOP;
-  // If wave is 0 (initial prep), show Wave 1
   const displayWave = isShopPhase ? currentWave + 1 : currentWave;
   const displayTime = Math.ceil(waveTime);
   const timerIsUrgent = !isShopPhase && waveTime > 0 && waveTime < 10;
+  
+  const timerClass = `text-5xl font-mono font-black drop-shadow-sm text-stroke ${
+      isPaused && phase === GamePhase.COMBAT
+          ? 'text-yellow-400 animate-pulse' 
+          : timerIsUrgent 
+              ? 'text-red-500 animate-pulse' 
+              : 'text-white'
+  }`;
 
   return (
     <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between z-50">
         
+        {showSupermarket && (
+             <div className="pointer-events-auto">
+                <Supermarket onClose={handleCloseSupermarket} />
+             </div>
+        )}
+
         {/* Top Bar - Light Glass */}
         <div className="flex justify-between items-center pointer-events-auto w-full max-w-7xl mx-auto">
             
@@ -102,30 +125,52 @@ export const HUD: React.FC<HUDProps> = ({ stats, waveTime, currentWave }) => {
                  <div className="px-3 py-1 bg-white/80 rounded-full border border-white shadow-sm mb-1">
                     <div className="text-[10px] font-black text-slate-400 tracking-[0.2em] uppercase">第 {displayWave} 波</div>
                  </div>
-                 <div className={`text-5xl font-mono font-black drop-shadow-sm text-stroke ${timerIsUrgent ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                    {displayTime}
+                 <div className={timerClass}>
+                    {isPaused && phase === GamePhase.COMBAT ? '已暂停' : displayTime}
                  </div>
             </div>
 
-            {/* Right: Expandable Stats Panel */}
-            <div 
-                className="group relative flex flex-col items-end pointer-events-auto"
-                onMouseEnter={() => setIsExpanded(true)}
-                onMouseLeave={() => setIsExpanded(false)}
-            >
-                <div className="bg-white/90 backdrop-blur border border-white p-2.5 rounded-full cursor-pointer hover:bg-slate-50 transition-colors shadow-lg shadow-slate-200/50 text-slate-600">
-                    <Menu size={24} />
-                </div>
+            {/* Right: Controls & Stats */}
+            <div className="flex items-center gap-3">
+                 {/* Combat Phase Only Controls */}
+                 {!isShopPhase && (
+                    <>
+                        <button 
+                            onClick={handleOpenSupermarket}
+                            className="bg-white/90 backdrop-blur border border-white p-2.5 rounded-full cursor-pointer hover:bg-purple-100 text-purple-600 shadow-lg transition-colors"
+                            title="Open Debug Supermarket"
+                        >
+                            <ShoppingCart size={24} />
+                        </button>
+                        <button 
+                            onClick={togglePause}
+                            className={`bg-white/90 backdrop-blur border border-white p-2.5 rounded-full cursor-pointer hover:bg-slate-50 shadow-lg transition-all ${isPaused ? 'text-green-500 animate-pulse ring-4 ring-green-200' : 'text-slate-600'}`}
+                        >
+                            {isPaused ? <Play size={24} fill="currentColor" /> : <Pause size={24} fill="currentColor" />}
+                        </button>
+                    </>
+                 )}
 
-                <div className={`
-                    absolute top-16 right-0 glass-panel p-4 rounded-3xl w-72 bg-white/95 backdrop-blur-xl border-2 border-white shadow-xl transition-all duration-300 origin-top-right z-50
-                    ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
-                `}>
-                     <h3 className="text-xs font-black text-slate-400 uppercase mb-3 tracking-widest border-b border-slate-100 pb-2">战斗属性</h3>
-                     {displayedStats.map(key => (
-                        <StatRow key={key} statKey={key} value={stats[key]!} />
-                     ))}
-                     {displayedStats.length === 0 && <p className="text-xs text-slate-400 text-center py-4 font-bold">暂无生效增益</p>}
+                {/* Expandable Stats Panel */}
+                <div 
+                    className="group relative flex flex-col items-end pointer-events-auto"
+                    onMouseEnter={() => setIsExpanded(true)}
+                    onMouseLeave={() => setIsExpanded(false)}
+                >
+                    <div className="bg-white/90 backdrop-blur border border-white p-2.5 rounded-full cursor-pointer hover:bg-slate-50 transition-colors shadow-lg shadow-slate-200/50 text-slate-600">
+                        <Menu size={24} />
+                    </div>
+
+                    <div className={`
+                        absolute top-16 right-0 glass-panel p-4 rounded-3xl w-72 bg-white/95 backdrop-blur-xl border-2 border-white shadow-xl transition-all duration-300 origin-top-right z-50
+                        ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
+                    `}>
+                        <h3 className="text-xs font-black text-slate-400 uppercase mb-3 tracking-widest border-b border-slate-100 pb-2">战斗属性</h3>
+                        {displayedStats.map(key => (
+                            <StatRow key={key} statKey={key} value={stats[key]!} />
+                        ))}
+                        {displayedStats.length === 0 && <p className="text-xs text-slate-400 text-center py-4 font-bold">暂无生效增益</p>}
+                    </div>
                 </div>
             </div>
         </div>

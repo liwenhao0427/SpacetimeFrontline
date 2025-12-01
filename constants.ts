@@ -1,5 +1,4 @@
 
-
 import { PlayerStats, Unit, Rarity } from './types';
 
 export const CANVAS_WIDTH = 1200; 
@@ -53,6 +52,8 @@ export const INITIAL_STATS: PlayerStats = {
   rangedDmgGrowth: 1,
   elementalDmgGrowth: 1,
   hpGrowth: 1,
+  
+  enemyHealthMultiplier: 1.0,
 };
 
 export const RARITY_COLORS: Record<string, string> = {

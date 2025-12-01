@@ -1,8 +1,4 @@
 
-
-
-
-
 import { GameState } from '../GameState';
 import { System } from '../System';
 import { EngineCallbacks } from '../index';
@@ -16,11 +12,12 @@ import { Log } from '../../Log';
 export class EnemySystem implements System {
   // New state for wave management
   private waveElapsedTime: number = 0;
-  private trickleQueue: string[] = [];
-  private burstSchedule: { time: number; enemies: string[] }[] = [];
-  private nextBurstIndex: number = 0;
-  private trickleSpawnTimer: number = 0;
-  private trickleInterval: number = 0;
+  
+  // Revised Spawning Logic State
+  private spawnQueue: string[] = []; // Full list of enemies to spawn
+  private spawnTimer: number = 0;    // Time accumulated since last spawn
+  private spawnInterval: number = 0; // Ideal time between spawns
+  private spawnEndTime: number = 0;  // When to stop spawning (duration - 3s)
 
   update(dt: number, gameState: GameState, callbacks: EngineCallbacks) {
     this.spawnEnemies(dt, gameState);
@@ -29,12 +26,9 @@ export class EnemySystem implements System {
 
   public prepareWave(waveNumber: number) {
     // Reset state for the new wave
-    this.burstSchedule = [];
-    this.trickleQueue = [];
     this.waveElapsedTime = 0;
-    this.nextBurstIndex = 0;
-    this.trickleSpawnTimer = 0;
-    this.trickleInterval = 0;
+    this.spawnQueue = [];
+    this.spawnTimer = 0;
 
     const config = WAVE_DATA.find(w => w.wave === waveNumber) || WAVE_DATA[WAVE_DATA.length - 1];
     if (!config) return;
@@ -42,91 +36,57 @@ export class EnemySystem implements System {
     const store = useGameStore.getState();
     const enemyCountModifier = 1 + ((store.stats.enemy_count || 0) / 100);
     
-    // 1. Generate the total list of enemies for the wave
-    let totalSpawnQueue: string[] = [];
+    // 1. Generate the total list of enemies for the wave based on composition percentages
     for (const id in config.composition) {
         const count = Math.round(config.totalCount * config.composition[id] * enemyCountModifier);
         for (let i = 0; i < count; i++) {
-            totalSpawnQueue.push(id);
+            this.spawnQueue.push(id);
         }
     }
     
     // 2. Shuffle queue for randomness in enemy types
-    for (let i = totalSpawnQueue.length - 1; i > 0; i--) {
+    for (let i = this.spawnQueue.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [totalSpawnQueue[i], totalSpawnQueue[j]] = [totalSpawnQueue[j], totalSpawnQueue[i]];
+      [this.spawnQueue[i], this.spawnQueue[j]] = [this.spawnQueue[j], this.spawnQueue[i]];
     }
     
-    const totalToSpawn = totalSpawnQueue.length;
+    // 3. Configure uniform spawning parameters
+    // We stop spawning 3 seconds before the wave ends to allow cleanup.
+    // If duration is very short (<=3), we just spawn immediately or over 1s.
+    const effectiveDuration = Math.max(1, config.duration - 3); 
+    this.spawnEndTime = effectiveDuration;
     
-    // 3. Define new spawn rhythm percentages
-    const MAJOR_BURST_PERCENT = 0.70;
-    const MINOR_BURST_PERCENT = 0.20;
+    // Calculate interval: Total Time / Total Enemies
+    if (this.spawnQueue.length > 0) {
+        this.spawnInterval = effectiveDuration / this.spawnQueue.length;
+    } else {
+        this.spawnInterval = 9999;
+    }
+    
+    // Start with a small random offset so the first enemy doesn't appear at t=0.000
+    this.spawnTimer = Math.random() * -0.5;
 
-    const majorBurstTotalEnemies = Math.floor(totalToSpawn * MAJOR_BURST_PERCENT);
-    const minorBurstTotalEnemies = Math.floor(totalToSpawn * MINOR_BURST_PERCENT);
-    
-    // 4. Schedule major bursts (at 10s intervals)
-    const numMajorBursts = Math.floor(config.duration / 10);
-    if (numMajorBursts > 0) {
-        const enemiesPerMajorBurst = Math.floor(majorBurstTotalEnemies / numMajorBursts);
-        for (let i = 1; i <= numMajorBursts; i++) {
-            this.burstSchedule.push({
-                time: i * 10,
-                enemies: totalSpawnQueue.splice(0, enemiesPerMajorBurst)
-            });
-        }
-    }
-
-    // 5. Schedule minor bursts (at 5s intervals, skipping 10s intervals)
-    const numMinorBursts = Math.floor(config.duration / 5) - numMajorBursts;
-    if (numMinorBursts > 0) {
-        const enemiesPerMinorBurst = Math.floor(minorBurstTotalEnemies / numMinorBursts);
-        for (let i = 1; i <= Math.floor(config.duration / 5); i++) {
-            if ((i * 5) % 10 !== 0) { // Only on 5, 15, 25...
-                this.burstSchedule.push({
-                    time: i * 5,
-                    enemies: totalSpawnQueue.splice(0, enemiesPerMinorBurst)
-                });
-            }
-        }
-    }
-    
-    // Sort the schedule by time to ensure correct execution order
-    this.burstSchedule.sort((a, b) => a.time - b.time);
-
-    // 6. Anything left in the queue is for trickling
-    this.trickleQueue = totalSpawnQueue;
-    if (this.trickleQueue.length > 0) {
-        this.trickleInterval = config.duration / this.trickleQueue.length;
-        this.trickleSpawnTimer = Math.random() * this.trickleInterval;
-    }
+    Log.log('EnemySystem', `Prepared Wave ${waveNumber}. Total Enemies: ${this.spawnQueue.length}. Duration: ${config.duration}s. Spawning ends at: ${this.spawnEndTime}s. Interval: ${this.spawnInterval.toFixed(3)}s`);
   }
 
   private spawnEnemies(dt: number, gameState: GameState) {
     this.waveElapsedTime += dt;
 
-    // Check for and execute scheduled bursts
-    if (this.nextBurstIndex < this.burstSchedule.length && this.waveElapsedTime >= this.burstSchedule[this.nextBurstIndex].time) {
-        const burst = this.burstSchedule[this.nextBurstIndex];
-        
-        // Distribute enemies evenly across rows to avoid stacking
-        let spawnRowCounter = Math.floor(Math.random() * GRID_ROWS);
-        for(const enemyId of burst.enemies) {
-            this.spawnSingleEnemy(enemyId, gameState, spawnRowCounter);
-            spawnRowCounter = (spawnRowCounter + 1) % GRID_ROWS;
-        }
-
-        this.nextBurstIndex++;
+    // Stop spawning if we passed the cut-off time
+    if (this.waveElapsedTime >= this.spawnEndTime) {
+        return;
     }
+    
+    if (this.spawnQueue.length === 0) return;
 
-    // Handle the continuous trickle of remaining enemies
-    if (this.trickleQueue.length > 0) {
-        this.trickleSpawnTimer -= dt;
-        if (this.trickleSpawnTimer <= 0) {
-            const enemyId = this.trickleQueue.shift(); // Use shift for FIFO trickle
-            if (enemyId) this.spawnSingleEnemy(enemyId, gameState);
-            this.trickleSpawnTimer += this.trickleInterval;
+    this.spawnTimer += dt;
+
+    // While timer exceeds interval, spawn enemies (allows catching up if frame dropped or interval is tiny)
+    while (this.spawnTimer >= this.spawnInterval && this.spawnQueue.length > 0) {
+        this.spawnTimer -= this.spawnInterval;
+        const enemyId = this.spawnQueue.shift();
+        if (enemyId) {
+            this.spawnSingleEnemy(enemyId, gameState);
         }
     }
   }
@@ -136,7 +96,9 @@ export class EnemySystem implements System {
     const typeData = ENEMY_DATA[enemyId];
     if (!typeData) return;
 
-    const wave = useGameStore.getState().stats.wave;
+    const store = useGameStore.getState();
+    const healthMultiplier = store.stats.enemyHealthMultiplier || 1.0;
+    const finalHp = Math.round(typeData.baseHp * healthMultiplier);
 
     // First, determine a consistent row for both positioning and logic
     const spawnRow = (forcedRow !== undefined) ? forcedRow : Math.floor(Math.random() * GRID_ROWS);
@@ -154,7 +116,6 @@ export class EnemySystem implements System {
     const spawnX = Math.max(baseSpawnX, rightmostEnemyInRowX + spawnOffset);
     
     const newEnemyId = Math.random();
-    Log.log('EnemySystem', `Spawning '${enemyId}' (id: ${newEnemyId.toFixed(5)}) at row ${spawnRow}, x: ${spawnX.toFixed(0)}`);
 
     gameState.enemies.push({
       id: newEnemyId,
@@ -162,8 +123,8 @@ export class EnemySystem implements System {
       y: spawnY,
       radius: 24 * typeData.scale,
       markedForDeletion: false,
-      hp: typeData.baseHp + typeData.hpPerWave * (wave - 1),
-      maxHp: typeData.baseHp + typeData.hpPerWave * (wave - 1),
+      hp: finalHp,
+      maxHp: finalHp,
       speed: typeData.speed,
       emoji: typeData.emoji,
       description: typeData.name,
