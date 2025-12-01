@@ -1,0 +1,187 @@
+
+import { System } from '../System';
+import { GameState } from '../GameState';
+import { EngineCallbacks } from '../index';
+import { useGameStore, getUnitHpScaling } from '../../../store/useGameStore';
+import { GRID_COLS, GRID_ROWS, CELL_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y } from '../../../constants';
+import { InspectableEntity, StatsBreakdown, Unit, PlayerStats } from '../../../types';
+import { InputSystem } from './InputSystem';
+import { UNIT_DATA } from '../../../data/units';
+
+export class InspectionSystem implements System {
+  private selectedEntityId: string | number | null = null;
+  private lastInspectedId: string | number | null = null;
+
+  constructor(private inputSystem: InputSystem) {}
+
+  public update(dt: number, gameState: GameState, callbacks: EngineCallbacks): void {
+    if (!this.selectedEntityId) {
+      this.checkInspectionHover(gameState, callbacks);
+    } else {
+      this.refreshInspectionData(this.selectedEntityId, gameState, callbacks);
+    }
+  }
+
+  public handleMouseClick(mx: number, my: number) {
+    const entity = this.findEntityAt(mx, my, useGameStore.getState(), new GameState());
+    
+    if (entity) {
+      const id = entity.type === 'UNIT' ? entity.data.id : entity.data.id;
+      // Toggle lock
+      if (this.selectedEntityId === id) {
+        this.selectedEntityId = null;
+        const hoverEntity = this.findEntityAt(this.inputSystem.mouseX, this.inputSystem.mouseY, useGameStore.getState(), new GameState());
+        useGameStore.getState().setInspectedEntity(hoverEntity);
+      } else {
+        this.selectedEntityId = id;
+        useGameStore.getState().setInspectedEntity(entity);
+      }
+    } else {
+      // Clicked empty space -> Unlock
+      this.selectedEntityId = null;
+      useGameStore.getState().setInspectedEntity(null);
+    }
+  }
+
+  private checkInspectionHover(gameState: GameState, callbacks: EngineCallbacks) {
+    const entity = this.findEntityAt(this.inputSystem.mouseX, this.inputSystem.mouseY, useGameStore.getState(), gameState);
+    const currentId = entity ? (entity.type === 'UNIT' ? entity.data.id : entity.data.id) : null;
+
+    if (currentId !== this.lastInspectedId) {
+      this.lastInspectedId = currentId as string | number;
+      callbacks.onInspect?.(entity);
+    }
+  }
+
+  private refreshInspectionData(id: string | number, gameState: GameState, callbacks: EngineCallbacks) {
+    const store = useGameStore.getState();
+    if (typeof id === 'string') {
+      const unit = store.gridUnits.find(u => u.id === id);
+      if (unit) {
+        callbacks.onInspect?.({ type: 'UNIT', data: unit, statsBreakdown: this.getUnitBreakdown(unit, store.stats) });
+      } else {
+        this.selectedEntityId = null;
+        callbacks.onInspect?.(null);
+      }
+    } else {
+      const enemy = gameState.enemies.find(e => e.id === id);
+      if (enemy) {
+        const breakdown: StatsBreakdown = {
+          damage: { base: enemy.damage, bonus: 0, multiplier: 1, scaled: [] },
+          cooldown: { base: 1.0, multiplier: 1 }
+        };
+        callbacks.onInspect?.({ type: 'ENEMY', data: enemy, statsBreakdown: breakdown });
+      } else {
+        this.selectedEntityId = null;
+        callbacks.onInspect?.(null);
+      }
+    }
+  }
+
+  private findEntityAt(mx: number, my: number, store: any, gameState: GameState): InspectableEntity {
+    const { stats, gridUnits } = store;
+    const { c, r } = this.inputSystem.getGridPosFromCoords(mx, my);
+
+    if (c >= 0 && c < GRID_COLS && r >= 0 && r < GRID_ROWS) {
+      const unit = gridUnits.find((u: any) => u.row === r && u.col === c);
+      if (unit) {
+        return { type: 'UNIT', data: unit, statsBreakdown: this.getUnitBreakdown(unit, stats) };
+      }
+    }
+
+    for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+      const e = gameState.enemies[i];
+      const dist = Math.hypot(e.x - mx, e.y - my);
+      if (dist <= e.radius) {
+        const breakdown: StatsBreakdown = {
+          damage: { base: e.damage, bonus: 0, multiplier: 1, scaled: [] },
+          cooldown: { base: 1.0, multiplier: 1 }
+        };
+        return { type: 'ENEMY', data: e, statsBreakdown: breakdown };
+      }
+    }
+    
+    return null;
+  }
+  
+  private getUnitBreakdown(unit: Unit, stats: PlayerStats): StatsBreakdown {
+      const scaled: Array<{ source: string; emoji: string; value: number; percentage: number; }> = [];
+      if (unit.scaling) {
+        if (unit.scaling.meleeDmg) scaled.push({ source: '近战', emoji: '🔪', value: (stats.meleeDmg || 0) * unit.scaling.meleeDmg, percentage: unit.scaling.meleeDmg });
+        if (unit.scaling.rangedDmg) scaled.push({ source: '远程', emoji: '🏹', value: (stats.rangedDmg || 0) * unit.scaling.rangedDmg, percentage: unit.scaling.rangedDmg });
+        if (unit.scaling.elementalDmg) scaled.push({ source: '魔法', emoji: '🔮', value: (stats.elementalDmg || 0) * unit.scaling.elementalDmg, percentage: unit.scaling.elementalDmg });
+        if (unit.scaling.maxHp) scaled.push({ source: '生命', emoji: '❤️', value: unit.maxHp * unit.scaling.maxHp, percentage: unit.scaling.maxHp });
+      }
+      
+      const unitData = Object.values(UNIT_DATA).find(ud => ud.name === unit.name);
+      const baseMaxHp = unitData ? unitData.maxHp : unit.maxHp;
+      
+      // Bonus (Flat damage from effects)
+      let bonusDamage = 0;
+      if (unit.effects?.stick_bonus) bonusDamage += unit.effects.stick_bonus;
+    
+      const globalDmgPct = stats.damagePercent || 0;
+      const tempDmgPct = stats.tempDamageMult || 0;
+      
+      let heroDmgPct = unit.isHero ? (stats.heroDamageMult || 0) : 0;
+      if (unit.isHero && unit.isUlting) {
+          // Approximate the multiplier impact as a percentage for display
+          // Logic: (1 + base) * (1 + ult) -> total
+          const currentHeroMult = 1 + heroDmgPct;
+          const withUlt = currentHeroMult * (1 + (stats.ult_dmg_bonus || 0));
+          heroDmgPct = withUlt - 1;
+      }
+      
+      const totalDmgMultiplier = (1 + globalDmgPct) * (1 + tempDmgPct) * (1 + heroDmgPct);
+      
+      const globalAspdPct = stats.attackSpeed || 0;
+      const tempAspdPct = stats.tempAttackSpeedMult || 0;
+      const heroAspdPct = unit.isHero ? (stats.heroAttackSpeedMult || 0) : 0;
+      
+      let totalCdMultiplier = (1 + globalAspdPct) * (1 + tempAspdPct) * (1 + heroAspdPct);
+      if (unit.isHero && unit.isUlting) {
+          totalCdMultiplier *= (stats.ult_speed_mult || 3);
+      }
+
+      const flatHpBonus = stats.flatHp || 0;
+      const hpPercentBonus = stats.hpPercent || 0;
+
+      return {
+          damage: { 
+              base: unit.baseDamage, 
+              scaled: scaled,
+              bonus: bonusDamage, 
+              multiplier: totalDmgMultiplier,
+              breakdown: {
+                  globalPct: globalDmgPct,
+                  tempPct: tempDmgPct,
+                  heroPct: heroDmgPct,
+              }
+          },
+          cooldown: { 
+              base: unit.maxCooldown, 
+              multiplier: totalCdMultiplier,
+              breakdown: {
+                  globalPct: globalAspdPct,
+                  tempPct: tempAspdPct,
+                  heroPct: heroAspdPct,
+              }
+          },
+          hp: {
+              base: baseMaxHp,
+              bonus: flatHpBonus,
+              scaling: getUnitHpScaling(unit),
+              multiplier: 1 + hpPercentBonus
+          }
+      };
+  }
+
+  private getTypeBonus(type: any, stats: any) {
+     switch(type) {
+         case 'MELEE': return stats.meleeDmg;
+         case 'RANGED': return stats.rangedDmg;
+         case 'MAGIC': return stats.elementalDmg;
+         default: return 0;
+     }
+  }
+}

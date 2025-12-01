@@ -1,0 +1,266 @@
+
+
+import React, { useEffect, useRef, useState } from 'react';
+import { GameEngine } from './services/engine';
+import { LevelUpModal } from './components/LevelUpModal';
+import { GameOverScreen } from './components/GameOverScreen';
+import { StartScreen } from './components/StartScreen';
+import { Shop } from './components/Shop';
+import { useGameStore } from './store/useGameStore';
+import { GamePhase, DraftOption, InspectableEntity, BrotatoItem, GameConfig } from './types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, INITIAL_STATS } from './constants';
+import { WAVE_DATA } from './data/waves';
+import { HUD } from './components/HUD';
+import { InspectorPanel } from './components/InspectorPanel';
+import { audioManager, SOUND_MAP } from './services/audioManager';
+import { Log } from './services/Log';
+import { assetLoader } from './services/AssetLoader';
+import { ShoppingBag, Swords, Image as ImageIcon } from 'lucide-react';
+import { GameSetupModal } from './components/GameSetupModal';
+
+export default function App() {
+  const { phase, setPhase, initGame, stats, startNextWave, applyDraft, setInspectedEntity, buyBrotatoItem, endWaveAndGoToShop, showPermanentLevelUp, toggleRenderMode, renderMode, activeWaveData } = useGameStore();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const engineRef = useRef<GameEngine | null>(null);
+  const waveStartedRef = useRef(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [isShopVisible, setShopVisible] = useState(true);
+
+  const inspectedEntity = useGameStore(state => state.inspectedEntity);
+
+  useEffect(() => {
+    audioManager.load(SOUND_MAP);
+    assetLoader.preloadCoreAssets(); // Start loading images
+    Log.displayLogsUI();
+    Log.log('App', 'Component mounted, audio loaded, log UI initialized.');
+
+    // Dev Shortcut for Render Mode
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key.toLowerCase() === 'm') {
+            toggleRenderMode();
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (canvasRef.current && !engineRef.current) {
+      Log.log('EngineInit', 'Canvas is ready, creating GameEngine instance.');
+      engineRef.current = new GameEngine(
+        canvasRef.current,
+        {
+          onTimeUpdate: (t) => setTimeLeft(t),
+          onGainLoot: (xp, gold) => {
+              const store = useGameStore.getState();
+
+              if (gold > 0) {
+                  audioManager.play('coin', { volume: 0.1 });
+              }
+              
+              let newXp = store.stats.xp + xp * (store.stats.xpGain || 1.0);
+              let newMaxXp = store.stats.maxXp;
+              let newLevel = store.stats.level;
+              let didLevelUp = false;
+
+              if (newXp >= newMaxXp) {
+                  newXp -= newMaxXp;
+                  newLevel += 1;
+                  newMaxXp = Math.floor(newMaxXp * 1.5); 
+                  didLevelUp = true;
+                  Log.log('AppCallback', `Level Up! New level: ${newLevel}`);
+              }
+
+              useGameStore.setState(s => ({ 
+                  stats: { 
+                      ...s.stats, 
+                      gold: s.stats.gold + gold,
+                      xp: newXp,
+                      maxXp: newMaxXp,
+                      level: newLevel
+                  } 
+              }));
+
+              if (didLevelUp) {
+                  engineRef.current?.stop();
+                  audioManager.play('level_up');
+                  setShowLevelUp(true);
+                  Log.log('AppCallback', 'Level up detected. Pausing engine and showing level up modal.');
+              }
+          },
+          onWaveEnd: () => {
+              Log.log('EngineCallback', 'onWaveEnd triggered. Calling endWaveAndGoToShop.');
+              endWaveAndGoToShop();
+          },
+          onGameOver: () => {
+              Log.log('EngineCallback', 'onGameOver triggered. Setting phase to GAME_OVER.');
+              engineRef.current?.stop();
+              audioManager.play('game_over', { volume: 0.5 });
+              setPhase(GamePhase.GAME_OVER);
+          },
+          onInspect: (entity) => {
+              setInspectedEntity(entity);
+          }
+        }
+      );
+    }
+    
+    return () => {
+        Log.log('EngineInit', 'App unmounting, cleaning up engine.');
+        engineRef.current?.cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    Log.log('PhaseLogic', `Phase changed to: ${phase}`);
+    if (phase === GamePhase.SHOP) {
+        setShopVisible(true);
+        const nextWaveNumber = stats.wave + 1;
+        const config = activeWaveData.find(w => w.wave === nextWaveNumber) || activeWaveData[activeWaveData.length - 1];
+        setTimeLeft(config.duration);
+        Log.log('PhaseLogic', `Entered SHOP. Pre-set timer for next wave (${nextWaveNumber}) to ${config.duration}s.`);
+    }
+  }, [phase, activeWaveData]);
+
+  useEffect(() => {
+    if (phase === GamePhase.COMBAT && !showLevelUp) {
+        audioManager.play('music', { loop: true, volume: 0.2 });
+        // If wave has already started, we are resuming from pause.
+        if (waveStartedRef.current === stats.wave) {
+             Log.log('EngineControl', `Resuming combat phase. Starting engine.`);
+             engineRef.current?.start();
+        } else {
+             Log.log('EngineControl', `New wave detected. Deferring engine start to WaveSync.`);
+        }
+    } else if (phase === GamePhase.SHOP && !showLevelUp && !showPermanentLevelUp) {
+        Log.log('EngineControl', `Phase is SHOP. Ensuring engine is RUNNING for UI.`);
+        engineRef.current?.start();
+        audioManager.stopMusic();
+    } else {
+        Log.log('EngineControl', `Phase is ${phase} or level up is shown. Ensuring engine is STOPPED.`);
+        audioManager.stopMusic();
+        engineRef.current?.stop();
+    }
+  }, [phase, showLevelUp, showPermanentLevelUp, stats.wave]);
+  
+  useEffect(() => {
+    Log.log('WaveSync', `Checking if wave should start. Phase: ${phase}, ShowLevelUp: ${showLevelUp}, WaveRef: ${waveStartedRef.current}, StoreWave: ${stats.wave}`);
+    if (phase === GamePhase.COMBAT && !showLevelUp && waveStartedRef.current !== stats.wave) {
+        Log.log('WaveSync', `CONDITION MET. Starting wave ${stats.wave}. Updating ref to ${stats.wave}.`);
+        waveStartedRef.current = stats.wave;
+        const config = activeWaveData.find(w => w.wave === stats.wave) || activeWaveData[activeWaveData.length-1];
+        engineRef.current?.startWave(config.duration, stats.wave);
+    }
+  }, [phase, showLevelUp, stats.wave, activeWaveData]);
+
+  const handleEnterSetup = () => {
+      setPhase(GamePhase.SETUP);
+  };
+
+  const handleStartGame = (config: GameConfig) => {
+    Log.log('App', '--- NEW GAME STARTED ---');
+    engineRef.current?.reset();
+    waveStartedRef.current = 0;
+    
+    initGame(config);
+    
+    // We get the activeWaveData from store immediately after init, but to be safe use the one from config if store update lags slightly in this closure (though Zustand is synchronous usually)
+    // Actually safe to wait for effect or just set timer here based on default
+    const wave1Config = WAVE_DATA[0]; // Fallback, real sync happens in SHOP phase effect
+    setTimeLeft(wave1Config.duration);
+    
+    setShowLevelUp(false);
+    setInspectedEntity(null);
+  };
+
+  const handleRestart = () => {
+    Log.log('App', 'Restart button clicked.');
+    setPhase(GamePhase.SETUP); // Go back to setup instead of instant restart
+  };
+
+  const handleDraftSelect = (option: DraftOption) => {
+      Log.log('App', `Draft selected: ${option.name}. Resuming combat.`);
+      audioManager.play('ui_click');
+      applyDraft(option, false);
+      setShowLevelUp(false);
+  };
+
+  const handlePermanentDraftSelect = (option: DraftOption) => {
+      Log.log('App', `Permanent Draft selected: ${option.name}.`);
+      audioManager.play('ui_click');
+      applyDraft(option, true);
+  };
+
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-sky-200 text-slate-800 font-sans relative overflow-hidden">
+      
+      <div 
+        className="relative shadow-2xl border-4 border-white bg-sky-300 rounded-3xl overflow-hidden"
+        style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
+      >
+        <canvas 
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          className="w-full h-full block"
+        />
+
+        {/* Full-screen overlays */}
+        {phase === GamePhase.START && <StartScreen onStart={handleEnterSetup} />}
+        {phase === GamePhase.SETUP && <GameSetupModal onConfirm={handleStartGame} />}
+        {phase === GamePhase.GAME_OVER && <GameOverScreen currentWave={stats.wave} onRestart={handleRestart} />}
+        {showLevelUp && <LevelUpModal onSelect={handleDraftSelect} level={stats.level} />}
+        
+        {/* Permanent Level Up Modal (From Shop) */}
+        {showPermanentLevelUp && <LevelUpModal onSelect={handlePermanentDraftSelect} level={stats.heroLevel} isPermanent={true} />}
+        
+        {phase === GamePhase.SHOP && (
+            <Shop 
+              isVisible={isShopVisible}
+              onVisibilityChange={setShopVisible}
+            />
+        )}
+        
+        {/* Dev Toggle */}
+        <div className="absolute top-4 left-4 z-[70] opacity-50 hover:opacity-100 transition-opacity">
+            <button 
+                onClick={toggleRenderMode} 
+                className="bg-white/80 p-2 rounded-lg text-xs font-bold border border-slate-300 shadow-sm flex items-center gap-2"
+                title="Toggle Emoji/Sprite Mode (Press M)"
+            >
+                <ImageIcon size={14} />
+                {renderMode}
+            </button>
+        </div>
+        
+        {phase === GamePhase.SHOP && !isShopVisible && (
+            <div className="absolute bottom-8 right-8 z-[60] pointer-events-auto flex items-center gap-4">
+                 <button 
+                    onClick={startNextWave}
+                    className="flex items-center gap-3 px-8 py-4 bg-red-500 hover:bg-red-400 text-white font-black rounded-full shadow-lg hover:scale-105 transition-all"
+                >
+                    <Swords size={24} />
+                    {`开始第 ${stats.wave + 1} 波`}
+                </button>
+                <button 
+                    onClick={() => setShopVisible(true)}
+                    className="flex items-center gap-3 px-6 py-4 bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-black rounded-full shadow-lg hover:scale-105 transition-all animate-bounce"
+                >
+                    <ShoppingBag size={24} />
+                    打开商店
+                </button>
+            </div>
+        )}
+
+        {/* HUD and side panels, visible during combat and shop phases */}
+        {(phase === GamePhase.COMBAT || phase === GamePhase.SHOP) && (
+          <>
+            <HUD stats={stats} waveTime={timeLeft} currentWave={stats.wave} />
+            <InspectorPanel entity={inspectedEntity} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,136 @@
+
+
+import { PlayerStats, Unit, Rarity } from './types';
+
+export const CANVAS_WIDTH = 1200; 
+export const CANVAS_HEIGHT = 800; 
+
+export const GRID_ROWS = 5;
+export const GRID_COLS = 9;
+export const CELL_SIZE = 120; 
+export const GRID_OFFSET_X = 60; 
+export const GRID_OFFSET_Y = 100; 
+export const GRID_TOP_OFFSET = 100;
+
+// 全局价格倍率
+export const PRICE_MULTIPLIER = 1.5;
+
+export const INITIAL_STATS: PlayerStats = {
+  gold: 200, // Initial gold increased to 200
+  heroLevel: 1,
+  heroXp: 0,
+  heroMaxXp: 50, 
+  level: 1,
+  xp: 0,
+  maxXp: 50, // Initial XP requirement lowered
+  
+  damagePercent: 0,
+  attackSpeed: 0,
+  critChance: 0.05,
+  speed: 100,
+  luck: 0,
+  pickupRange: 1.0,
+  xpGain: 1.0,
+  shopDiscount: 0,
+  flatHp: 0,
+  hpPercent: 0,
+  harvesting: 0,
+
+  meleeDmg: 0,
+  rangedDmg: 0,
+  elementalDmg: 0,
+  engineering: 0,
+
+  tempDamageMult: 0,
+  tempAttackSpeedMult: 0,
+  heroDamageMult: 0,
+  heroAttackSpeedMult: 0,
+  wave: 0, // Initial wave set to 0 for Prep Phase
+  
+  heroEnergyGainRate: 1.0,
+  heroMaxEnergy: 100,
+  ult_speed_mult: 6,
+
+  meleeDmgGrowth: 1,
+  rangedDmgGrowth: 1,
+  elementalDmgGrowth: 1,
+  hpGrowth: 1,
+};
+
+export const RARITY_COLORS: Record<string, string> = {
+  COMMON: '#94a3b8',
+  RARE: '#3b82f6',
+  EPIC: '#a855f7',
+  LEGENDARY: '#ef4444'
+};
+
+export const RARITY_BG_COLORS: Record<string, string> = {
+  COMMON: 'bg-white',
+  RARE: 'bg-blue-50',
+  EPIC: 'bg-purple-50',
+  LEGENDARY: 'bg-red-50'
+};
+
+export const RARITY_HOVER_BG_COLORS: Record<string, string> = {
+    COMMON: 'hover:bg-slate-50',
+    RARE: 'hover:bg-blue-100',
+    EPIC: 'hover:bg-purple-100',
+    LEGENDARY: 'hover:bg-red-100'
+};
+
+export const TIER_TO_RARITY: Record<number, Rarity> = {
+  1: 'COMMON',
+  2: 'RARE',
+  3: 'EPIC',
+  4: 'LEGENDARY'
+};
+
+
+export const HERO_UNIT: Unit = {
+  id: 'hero',
+  name: 'Keyboard Warrior',
+  emoji: '🦸‍♂️',
+  description: '作为指挥官，英雄会随时间获取能量以释放强大的终极技能。其攻击模式可以通过升级进行改变。',
+  type: 'RANGED',
+  baseDamage: 12,
+  scaling: { rangedDmg: 1.0 },
+  range: 99, 
+  cooldown: 0,
+  maxCooldown: 1.0,
+  hp: 200,
+  maxHp: 200,
+  isHero: true,
+  energy: 0,
+  row: 2,
+  col: 0, 
+  isDead: false,
+  attackType: 'LINEAR',
+  // 更新为新的 2x16 精灵图配置
+  spriteConfig: {
+      textureId: 'hero_zhuyuan',
+      width: 128,
+      height: 128,
+      scale: 1.2, 
+      animations: {
+          // IDLE 状态现在也使用攻击动画，并且循环播放
+          IDLE:   { x: 0, y: 0, frames: 16, loop: true, speed: 80 },
+          ATTACK: { x: 0, y: 0, frames: 16, loop: false, speed: 60 },
+          // 新的精灵图没有受击动画
+          DEATH:  { x: 0, y: 128, frames: 16, loop: false, speed: 100 }
+      }
+  }
+};
+
+export const AMMO_TYPE_MAP: Record<string, string> = {
+  BULLET: 'Bullet',
+  ROCKET: 'Rocket',
+  MAGIC: 'Magic',
+  MELEE: 'Melee',
+};
+
+export const KEYWORD_DEFINITIONS: Record<string, string> = {
+  "Burn": "Deals damage over time.",
+  "Freeze": "Stops movement.",
+  "Pierce": "Goes through enemies.",
+  "持续": "Duration of the effect."
+};
