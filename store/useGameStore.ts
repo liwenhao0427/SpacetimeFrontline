@@ -13,11 +13,12 @@ import { audioManager } from '../services/audioManager';
 const STAT_KEY_MAP: Record<string, string> = {
   percentDmg: 'damagePercent',
   atkSpeed: 'attackSpeed',
-  crit: 'critChance',
+  crit: 'critChance', // Kept for now, even if not fully used, for consistency in item data mapping.
   shop_discount: 'shopDiscount',
   flatHp: 'flatHp',
   hpPercent: 'hpPercent',
-  harvesting: 'harvesting'
+  harvesting: 'harvesting',
+  enemy_count: 'enemy_count', // Explicitly map this item effect to PlayerStats
 };
 
 interface GameStore {
@@ -105,7 +106,7 @@ const calculateUnitMaxHp = (unitData: UnitData | Partial<Unit>, stats: PlayerSta
 
 const calculateFinalStats = (ownedItems: Record<string, number>, allItems: BrotatoItem[], currentStats: PlayerStats): PlayerStats => {
     const newStats: PlayerStats = { 
-        ...INITIAL_STATS,
+        ...INITIAL_STATS, // Use cleaned INITIAL_STATS from constants
         gold: currentStats.gold,
         wave: currentStats.wave,
         // Preserve Permanent Progression
@@ -129,7 +130,12 @@ const calculateFinalStats = (ownedItems: Record<string, number>, allItems: Brota
                 for (const key in combinedAttrs) {
                     const value = combinedAttrs[key];
                     const statKey = STAT_KEY_MAP[key] || key;
-                    newStats[statKey] = (newStats[statKey] || 0) + value;
+                    if (newStats[statKey] !== undefined) { // Only update if the stat exists in PlayerStats
+                         newStats[statKey] = (newStats[statKey] || 0) + value;
+                    } else {
+                        // For any effects not directly mapped but needing to be on PlayerStats (e.g. enemy_count)
+                        newStats[key] = (newStats[key] || 0) + value;
+                    }
                 }
             }
         }
@@ -143,7 +149,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   phase: GamePhase.START,
   gridUnits: [],
   draftOptions: [],
-  ammoState: {},
+  ammoState: {}, // This seems to be unused, but kept for legacy/potential future features
   inspectedEntity: null,
   allItems: ITEMS_DATA,
   ownedItems: {},
@@ -212,7 +218,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       activeWaveData: activeWaveData,
       allItems: mergedItems,
 
-      stats: { ...INITIAL_STATS, wave: 0, gold: 200, heroLevel: 1 }, 
+      stats: { ...INITIAL_STATS, wave: 0, gold: 200, heroLevel: 1 }, // Corrected ult_speed_mult is already in INITIAL_STATS
       gridUnits: starters,
       phase: GamePhase.SHOP, // Start in SHOP
       draftOptions: [],
@@ -339,7 +345,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                   gold: currentGold,
                   // Update Permanent Stats
                   heroXp: newXp,
-                  heroMaxXp: newMaxXp,
+                  heroMaxXp: newMaxXp, // Fixed: Changed newMaxXx to newMaxXp
                   heroLevel: newLevel,
                   // Sync visuals
                   xp: newXp,
@@ -587,6 +593,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       nextStats.ult_duration_bonus = (permStatus.ultimate >= 3 ? 1.5 : 0);
       nextStats.ult_kill_extend = (permStatus.ultimate >= 4 ? 0.1 : 0);
 
+      // Clear Wave Temporary Buffs (from in-wave level ups)
+      nextStats.tempDamageMult = 0;
+      nextStats.tempAttackSpeedMult = 0;
+      
       return {
         gridUnits: unitsWithResetHero,
         stats: nextStats,

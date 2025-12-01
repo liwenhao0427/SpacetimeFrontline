@@ -1,4 +1,5 @@
 
+
 export type WeaponClass = 'MELEE' | 'RANGED' | 'MAGIC' | 'ENGINEERING';
 
 export type Rarity = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
@@ -114,10 +115,7 @@ export interface PlayerStats {
   // Combat Stats (Global Buffs)
   damagePercent: number;
   attackSpeed: number;
-  critChance: number;
-  speed: number; // Projectile speed modifier
   luck: number;
-  pickupRange: number;
   xpGain: number;
   shopDiscount: number;
   flatHp: number;
@@ -152,13 +150,11 @@ export interface PlayerStats {
   ult_speed_mult?: number;
   ult_dmg_bonus?: number;
   ult_kill_extend?: number;
+  ult_duration_bonus?: number; // Corrected from boolean to number
 
-  // New Growth Rate Modifiers
-  meleeDmgGrowth?: number;
-  rangedDmgGrowth?: number;
-  elementalDmgGrowth?: number;
-  hpGrowth?: number;
-  
+  // Special Global Effects (from items)
+  enemy_count?: number; // e.g. from "Friendly Alien Frog"
+
   // Index signature for dynamic item effects
   [key: string]: number | undefined | any;
 }
