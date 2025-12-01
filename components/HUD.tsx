@@ -1,5 +1,6 @@
 
 
+
 import React, { useState } from 'react';
 import { PlayerStats, GamePhase } from '../types';
 import { Zap, Shield, Swords, Crosshair, Wind, Clover, Menu, Magnet, GraduationCap, Coins, Percent, Heart, Hammer, Leaf, Sparkles, Wand } from 'lucide-react';
@@ -23,7 +24,6 @@ const STAT_DISPLAY_CONFIG: Record<string, { label: string; icon: React.ElementTy
     meleeDmg: { label: '近战伤害 🔪', icon: Swords, color: 'text-red-600' },
     rangedDmg: { label: '远程伤害 🏹', icon: Swords, color: 'text-blue-600' },
     elementalDmg: { label: '魔法伤害 🔮', icon: Sparkles, color: 'text-purple-600' },
-    engineering: { label: '工程学 🛠️', icon: Hammer, color: 'text-orange-700' },
     enemy_count: { label: '敌人数量 👾', icon: Zap, color: 'text-pink-500', isPercent: true },
     explosion_dmg: { label: '爆炸伤害 💥', icon: Zap, color: 'text-orange-600', isPercent: true},
     burn_chance: { label: '燃烧几率 🔥', icon: Zap, color: 'text-red-600', isPercent: true},

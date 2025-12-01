@@ -22,7 +22,7 @@ FinalDmg = round( (BaseDmg + ScaledFlatBonus + EffectFlatBonus) * GlobalMultipli
 | 参数 | 构成 | 来源 | 解释 |
 | :--- | :--- | :--- | :--- |
 | **`BaseDmg`** | `unit.baseDamage` | `data/units.ts` | 单位自身的基础攻击力。 |
-| **`ScaledFlatBonus`** | `(stats.meleeDmg * scaling.meleeDmg) + ...` | 道具 (`BrotatoItem`) | 根据单位的 `scaling` 属性，将玩家的扁平伤害属性 (`meleeDmg` 等) 按比例加成到基础伤害上。 |
+| **`ScaledFlatBonus`** | `(stats.meleeDmg * scaling.meleeDmg) + ...` | 道具 (`BrotatoItem`) | 根据单位的 `scaling` 属性，将玩家的扁平伤害属性 (`meleeDmg`, `rangedDmg`, `elementalDmg`) 按比例加成到基础伤害上。 |
 | **`EffectFlatBonus`** | `unit.effects.stick_bonus` | 单位特效 | 来自单位自身特效的额外扁平伤害（例如"树枝"）。 |
 | **`GlobalMultiplier`** | `(1 + stats.damagePercent)` | 道具 | 来自所有永久道具的全局伤害增益，构成一个独立的乘区。 |
 | **`TempMultiplier`** | `(1 + stats.tempDamageMult)` | 战内升级 | 来自战斗中升级选项的临时伤害增益，仅在本波次生效。 |

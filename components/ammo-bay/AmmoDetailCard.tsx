@@ -34,7 +34,6 @@ export const AmmoDetailCard: React.FC<{ item: AmmoItem; isPinned: boolean; onClo
   if (item.weaponClass === 'MELEE') flatBonus = stats.meleeDmg;
   if (item.weaponClass === 'RANGED') flatBonus = stats.rangedDmg;
   if (item.weaponClass === 'MAGIC') flatBonus = stats.elementalDmg; 
-  if (item.weaponClass === 'ENGINEERING') flatBonus = stats.engineering || 0;
   const finalDamage = Math.round((item.damage + flatBonus) * (1 + (stats.damagePercent || 0)));
 
   const finalCooldown = item.cooldown / (1 + (stats.attackSpeed || 0));
@@ -138,7 +137,6 @@ export const AmmoDetailCard: React.FC<{ item: AmmoItem; isPinned: boolean; onClo
                     {item.weaponClass === 'MELEE' && "Benefits from Melee Damage."}
                     {item.weaponClass === 'RANGED' && "Benefits from Ranged Damage."}
                     {item.weaponClass === 'MAGIC' && "Benefits from Elemental Damage."}
-                    {item.weaponClass === 'ENGINEERING' && "Benefits from Engineering."}
                 </div>
             </div>
         </div>

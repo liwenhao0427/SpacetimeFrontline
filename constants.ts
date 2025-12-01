@@ -26,6 +26,8 @@ export const INITIAL_STATS: PlayerStats = {
   
   damagePercent: 0,
   attackSpeed: 0,
+  critChance: 0.05,
+  speed: 100,
   luck: 0,
   xpGain: 1.0,
   shopDiscount: 0,
@@ -36,7 +38,6 @@ export const INITIAL_STATS: PlayerStats = {
   meleeDmg: 0,
   rangedDmg: 0,
   elementalDmg: 0,
-  engineering: 0,
 
   tempDamageMult: 0,
   tempAttackSpeedMult: 0,
@@ -46,7 +47,12 @@ export const INITIAL_STATS: PlayerStats = {
   
   heroEnergyGainRate: 1.0,
   heroMaxEnergy: 100,
-  ult_speed_mult: 3, 
+  ult_speed_mult: 6,
+
+  meleeDmgGrowth: 1,
+  rangedDmgGrowth: 1,
+  elementalDmgGrowth: 1,
+  hpGrowth: 1,
 };
 
 export const RARITY_COLORS: Record<string, string> = {
